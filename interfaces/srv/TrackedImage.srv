@@ -1,0 +1,6 @@
+# TrackedImage.srv
+---
+bool success
+string message
+std_msgs/Header header_capture
+sensor_msgs/Image image

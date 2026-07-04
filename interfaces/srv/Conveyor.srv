@@ -1,0 +1,5 @@
+bool start_stop
+bool direction
+uint8 speed
+---
+bool status

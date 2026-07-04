@@ -1,0 +1,12 @@
+<RCC>
+  <qresource prefix="ico">
+    <file>gui_check_yes_icon_157194.ico</file>
+    <file>pause_icon_134502.ico</file>
+    <file>play_icon_134504.ico</file>
+    <file>stop_icon_134500.ico</file>
+    <file>logoVISARM-removebg-preview.ico</file>
+    <file>logo4.0yUPV.ico</file>
+    <file>scale1.ico</file>
+    <file>logo4.0yUPV.png</file>
+  </qresource>
+</RCC>

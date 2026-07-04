@@ -1,0 +1,5 @@
+int8 light_id
+bool enabled
+---
+bool success
+string message
