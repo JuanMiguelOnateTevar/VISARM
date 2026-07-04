@@ -6,6 +6,9 @@ import cv2
 from PyQt5.QtWidgets import QApplication, QMainWindow
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import pyqtSignal
+from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QImage, QPixmap
+from PyQt5.QtCore import QTimer
 from frontend.ui.visarm_interfaz import Ui_MainWindow
 import frontend.ui.resource
 
@@ -31,8 +34,8 @@ class VisarmWindow(QMainWindow):
     camera_response_signal = pyqtSignal(
         bool, #success
         str,  #message
-        int,  #header_capture
-        np.ndarray #image
+        int,  #timestamp en milisegundos
+        np.ndarray #image Numpy o None
     )
 
     def __init__(self) -> None:
@@ -73,14 +76,6 @@ class VisarmWindow(QMainWindow):
 
         self.ui.ButtonLaunch.clicked.connect(self.start_system)
 
-    def photocell_received(self, detected: bool) -> None:
-        if detected:
-            self.ui.lineEdit_Info.setText(
-                "Pieza detectada por la fotocélula."
-            )
-            self.ui.ButtonMarcha_Paro.setChecked(False)
-            self.CamClient.callback_client_camera()
-
     def connect_signals(self) -> None:
         self.ui.ButtonLaunch.clicked.connect(self.start_system)
         self.ui.ButtonLuminaria1.toggled.connect(self.change_light_1)
@@ -91,6 +86,23 @@ class VisarmWindow(QMainWindow):
 
     def start_system(self) -> None:
         print("VISARM iniciado")
+
+
+    def photocell_received(self, detected: bool) -> None:
+        if not detected:
+            return
+
+        self.ui.lineEdit_Info.setText(
+            "Pieza detectada. Esperando para capturar imagen..."
+        )
+
+        self.ui.ButtonMarcha_Paro.setChecked(False)
+
+        #Este delay es no bloqueante
+        QTimer.singleShot(
+            1000,
+            self.CamClient.callback_client_camera,
+        )
 
     def change_light_1(self, checked: bool) -> None:
         self.ComEsp32.callback_client_light(
@@ -174,10 +186,74 @@ class VisarmWindow(QMainWindow):
             self.ui.lineEdit_Info.setText(f'Parametro de conveyo modificado. '
                 f'Conveyo {status_start_stop} con dirección {status_direction} y velocidad {round(status_speed/2.55)}%')
 
-    def update_camera_response(self, success, message, header_capture, image) -> None:
-        print('----->>> Captura de imagen')
+    def update_camera_response(
+        self,
+        success: bool,
+        message: str,
+        header_capture: int,
+        image: np.ndarray,
+    ) -> None:
+
         self.ui.lineEdit_Info.setText(message)
 
+        if not success or image is None:
+            print(f"Error recibiendo imagen: {message}")
+            return
+
+        try:
+            # OpenCV entrega BGR y QImage necesita RGB
+            image_rgb = cv2.cvtColor(
+                image,
+                cv2.COLOR_BGR2RGB,
+            )
+
+            image_rgb = np.ascontiguousarray(image_rgb)
+
+            height, width, channels = image_rgb.shape
+            bytes_per_line = width * channels
+
+            qimage = QImage(
+                image_rgb.data,
+                width,
+                height,
+                bytes_per_line,
+                QImage.Format_RGB888,
+            ).copy()
+
+            pixmap = QPixmap.fromImage(qimage)
+
+            # Configuración del QLabel
+            self.ui.Image.setScaledContents(False)
+            self.ui.Image.setAlignment(Qt.AlignCenter)
+
+            # Tamaño disponible dentro del QLabel,
+            # que debe ocupar el QGroupBox mediante un layout
+            available_size = self.ui.Image.contentsRect().size()
+
+            scaled_pixmap = pixmap.scaled(
+                available_size,
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation,
+            )
+
+            # Sustituye la imagen anterior
+            self.ui.Image.setPixmap(scaled_pixmap)
+
+            # Fuerza el repintado visual
+            self.ui.Image.update()
+
+            print(
+                f"Imagen mostrada: {width}x{height} → "
+                f"{scaled_pixmap.width()}x{scaled_pixmap.height()}, "
+                f"timestamp={header_capture}"
+            )
+
+        except Exception as error:
+            print(f"Error mostrando imagen: {error}")
+
+            self.ui.lineEdit_Info.setText(
+                f"Error mostrando imagen: {error}"
+            )
 def main(args=None) -> None:
     rclpy.init(args=args)
 

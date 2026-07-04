@@ -35,7 +35,6 @@ class CameraNode(Node):
         self.image_service = self.create_service(
             srv_type=TrackedImage,
             srv_name='/camera/processing',
-            qos_profile=qos,
             callback=self.capture_image
         )
 
@@ -69,6 +68,7 @@ class CameraNode(Node):
                 continue
 
             # Algunas cámaras necesitan varios intentos iniciales
+            time.sleep(1)
             for _ in range(5):
                 ret, frame = cap.read()
 
@@ -94,16 +94,70 @@ class CameraNode(Node):
             "Ningún dispositivo de vídeo permite capturar imágenes"
         )
 
-    def capture_image(self, response):
-        ret, frame = self.cap.read()
-        if not ret:
-            self.get_logger().warning('No se pudo inicializar la camara')
-            return
-        frame_processing = self.processing_image(frame_raw=frame)
-        srv_img = self.bridge.cv2_to_imgmsg(frame_processing, encoding='bgr8')
-        response.tracked_msg.message = 'Imagen capturada y procesada'
-        response.tracked_msg.header_capture.stamp = self.get_clock().now().to_msg()
-        response.tracked_msg.image = srv_img
+    def capture_image(self, _request, response):
+
+        self.get_logger().info(
+            "Petición de captura recibida"
+        )
+
+        ret = False
+        frame = None
+
+        # Descartar frames antiguos del búfer
+        for _ in range(5):
+            ret, frame = self.cap.read()
+
+            if not ret:
+                break
+
+        if not ret or frame is None:
+            response.success = False
+            response.message = "No se pudo capturar la imagen"
+
+            self.get_logger().error(
+                response.message
+            )
+
+            return response
+
+        try:
+            frame_processing = self.processing_image(
+                frame_raw=frame
+            )
+
+            image_msg = self.bridge.cv2_to_imgmsg(
+                frame_processing,
+                encoding="bgr8",
+            )
+
+            capture_time = self.get_clock().now().to_msg()
+
+            image_msg.header.stamp = capture_time
+            image_msg.header.frame_id = "camera"
+
+            response.success = True
+            response.message = (
+                "Imagen capturada y procesada"
+            )
+
+            response.header_capture.stamp = capture_time
+            response.header_capture.frame_id = "camera"
+            response.image = image_msg
+
+            self.get_logger().info(
+                f"Imagen enviada: "
+                f"{capture_time.sec}."
+                f"{capture_time.nanosec:09d}, "
+                f"valor medio={frame.mean():.2f}"
+            )
+
+        except Exception as error:
+            response.success = False
+            response.message = str(error)
+
+            self.get_logger().error(
+                f"Error procesando imagen: {error}"
+            )
 
         return response
 
