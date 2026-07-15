@@ -33,6 +33,9 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/Conveyor.srv"
   "srv/SetLight.srv"
   "srv/TrackedImage.srv"
+  "srv/Trigger.srv"
+  "srv/Change.srv"
+  "action/Home.action"
   DEPENDENCIES std_msgs sensor_msgs# Add packages that above messages depend on, in this case geometry_msgs for Sphere.msg
 )
 

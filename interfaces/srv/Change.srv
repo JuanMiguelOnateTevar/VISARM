@@ -1,0 +1,5 @@
+bool mode
+float32 timeout
+---
+bool status
+string message

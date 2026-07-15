@@ -41,7 +41,7 @@ class CameraClientNode(Node):
         
         try:
             self.get_logger().info('Empezando captura y procesado.')
-            time.sleep(1)
+    
             future = self.client_camera.call_async(request=request)
 
             def when_finished(complete_request) -> None:

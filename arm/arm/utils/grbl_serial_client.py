@@ -1,0 +1,153 @@
+import serial
+import time
+
+class GrblSerialClient:
+    def __init__(self, port, baud_rate, timeout):
+        self.port = port
+        self.baud_rate = baud_rate
+        self.timeout = timeout
+        self.puerto_serial = None
+
+    def connect(self) -> tuple[bool, str]:
+        aux = None
+        try:
+            self.puerto_serial = serial.Serial(port=self.port, baudrate=self.baud_rate, timeout=self.timeout)
+            if not self.puerto_serial.is_open:
+                raise ConnectionError("No se pudo abrir el puerto serie")
+            
+            startup_deadline = time.monotonic() + 5.0
+            while time.monotonic() < startup_deadline:
+                raw_response = self.puerto_serial.readline()
+                response =raw_response.decode("utf-8", "replace").strip()
+
+                if response.startswith("Grbl"):
+                    print(f"GRBL inicializado correctamente {response}")
+                    return True, response
+            
+            self.disconnect()
+            raise TimeoutError("El puerto se abrió, pero GRBL no termino la inicialización.")
+
+        except serial.SerialException as error:
+            raise ConnectionError(
+                f"Error de comunicación serie: {error}"
+            ) from error
+
+    def disconnect(self) -> tuple[bool, str]:
+        try:
+            if self.puerto_serial is not None and self.puerto_serial.is_open:
+                self.puerto_serial.close()
+                return True, 'Puerto cerrado.'
+
+        except serial.SerialException as e:
+            print(f'Error al cerrar el puerto {e}.')
+
+
+    def send_line_command(self, command, command_timeout=240.0):
+        if self.puerto_serial is None or not self.puerto_serial.is_open:
+            raise ConnectionError("El puerto serie del Arm no está conectado.")
+        
+        responses = []
+        try:
+            command_bytes = f"{command.strip()}\n".encode("utf-8")
+            self.puerto_serial.write(command_bytes)
+
+            startup_deadline = time.monotonic() + command_timeout
+            while time.monotonic() < startup_deadline:
+                raw_response = self.puerto_serial.readline()
+                response = raw_response.decode("utf-8", "replace").strip()
+                if response == "":
+                    continue
+
+                #print(f"GRBL: {response}")
+                
+                if response == "ok":
+                    responses.append(response)
+                    return responses
+                
+                if response.startswith("error:"):
+                    raise RuntimeError(f"GRBL rechazó el comando : {response}")
+                
+                if response.startswith("ALARM:"):
+                    raise RuntimeError(f"GRBL está en alarma: {response}")
+                
+                responses.append(response)
+            raise TimeoutError(
+                f"GRBL no completó el comando dentro del tiempo: {command}"
+            )
+
+        except serial.SerialException as e:
+            print(f'Error al mandar el comando {e}.')
+
+
+    def query_status(self):
+        if self.puerto_serial is None or not self.puerto_serial.is_open:
+            raise ConnectionError(
+                "El puerto serie del brazo no está conectado."
+            )
+        try:
+            self.puerto_serial.write(f"?".encode("utf-8"))
+            startup_deadline = time.monotonic() + 15.0
+            while time.monotonic() < startup_deadline:
+                raw_response = self.puerto_serial.readline()
+                response = raw_response.decode("utf-8", errors="replace").strip()
+
+                if response.startswith("<") and response.endswith(">"):
+                    return True, response
+            return "Error: Timeout"
+        except serial.SerialException as error:
+            raise ConnectionError(
+                f"Error de comunicación serie: {error}"
+            ) from error
+        
+    def wait_until_idle(
+        self,
+        timeout: float,
+        poll_period: float = 0.1,
+    ) -> str:
+        if self.puerto_serial is None or not self.puerto_serial.is_open:
+            raise ConnectionError(
+                "El puerto serie del brazo no está conectado."
+            )
+
+        deadline = time.monotonic() + timeout
+
+        while time.monotonic() < deadline:
+            _, response = self.query_status()
+
+            state = response[1:-1].split("|", 1)[0]
+            base_state = state.split(":", 1)[0]
+
+            if base_state == "Idle":
+                return response
+
+            if base_state == "Alarm":
+                raise RuntimeError(
+                    f"GRBL entró en alarma: {response}"
+                )
+
+            if base_state in {"Hold", "Door"}:
+                raise RuntimeError(
+                    f"Movimiento interrumpido. Estado: {response}"
+                )
+
+            time.sleep(poll_period)
+
+        raise TimeoutError(
+            f"GRBL no alcanzó Idle en {timeout} segundos"
+        )
+
+if __name__ == "__main__":
+    SerialClient = GrblSerialClient(port="/dev/ttyACM0", baud_rate=115200, timeout=3)
+    SerialClient.connect()
+    responses = SerialClient.send_line_command(command='$H')
+    print(responses)
+    #response = SerialClient.query_status()
+    #print(response)
+    SerialClient.send_line_command("G21")
+    SerialClient.send_line_command("G90")
+    SerialClient.send_line_command(
+        "G1 X15 Y10 Z12 B12 F400"
+    )
+    response = SerialClient.wait_until_idle(timeout=200.0)
+    print(response)
+    SerialClient.disconnect()
