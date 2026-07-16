@@ -116,23 +116,11 @@ class ArmNode(Node):
             feedback.stage = "starting_homing"
             goal_handle.publish_feedback(feedback)
 
-            self.SerialClient.send_line_command(
-                "$H",
-                self.homing_timeout,
-            )
+            self.SerialClient.send_line_command("$H")
 
             _, response = self.SerialClient.query_status()
-            self.get_logger().info(response)
-            state = response[1:-1].split("|", 1)[0]
-            base_state = state.split(":", 1)[0]
-
-            while not base_state == "Idle":
-                _, response = self.SerialClient.query_status()
-                self.get_logger().info(response)
-                state = response[1:-1].split("|", 1)[0]
-                base_state = state.split(":", 1)[0]
-                feedback.stage = response
-                goal_handle.publish_feedback(feedback)
+            feedback.stage = f"homing_done MPos={response.get('MPos')}"
+            goal_handle.publish_feedback(feedback)
 
             feedback.stage = "completed"
             goal_handle.publish_feedback(feedback)

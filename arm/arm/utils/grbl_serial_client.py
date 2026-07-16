@@ -43,6 +43,9 @@ class GrblSerialClient:
 
 
     def send_line_command(self, command, command_timeout=240.0):
+        """
+        Escribe el comando y espera el 'ok'
+        """
         if self.puerto_serial is None or not self.puerto_serial.is_open:
             raise ConnectionError("El puerto serie del Arm no está conectado.")
         
@@ -75,29 +78,113 @@ class GrblSerialClient:
                 f"GRBL no completó el comando dentro del tiempo: {command}"
             )
 
-        except serial.SerialException as e:
-            print(f'Error al mandar el comando {e}.')
+        except serial.SerialException as error:
+            print(f'Error al mandar el comando {error}.')
 
+    def write_line_command(self, command: str) -> None:
+        """
+        Escribe el comando y no es pera el 'ok'
+        """
+        if self.puerto_serial is None or not self.puerto_serial.is_open:
+            raise ConnectionError(
+                "El puerto serie del brazo no está conectado."
+            )
+
+        try:
+            command_bytes = f"{command.strip()}\n".encode("utf-8")
+            self.puerto_serial.write(command_bytes)
+
+        except serial.SerialException as error:
+            raise ConnectionError(
+                f"Error escribiendo comando GRBL: {error}"
+            ) from error
 
     def query_status(self):
         if self.puerto_serial is None or not self.puerto_serial.is_open:
             raise ConnectionError(
                 "El puerto serie del brazo no está conectado."
             )
+
         try:
-            self.puerto_serial.write(f"?".encode("utf-8"))
-            startup_deadline = time.monotonic() + 15.0
-            while time.monotonic() < startup_deadline:
+            self.puerto_serial.write(b"?")
+            deadline = time.monotonic() + 15.0
+
+            while time.monotonic() < deadline:
                 raw_response = self.puerto_serial.readline()
-                response = raw_response.decode("utf-8", errors="replace").strip()
+                response = raw_response.decode(
+                    "utf-8",
+                    errors="replace",
+                ).strip()
+
+                if response == "":
+                    continue
+
+                if response.startswith("error:"):
+                    return False, {
+                        "raw": response,
+                        "message": response,
+                    }
+
+                if response.startswith("ALARM:"):
+                    return False, {
+                        "raw": response,
+                        "message": response,
+                    }
 
                 if response.startswith("<") and response.endswith(">"):
-                    return True, response
-            return "Error: Timeout"
+                    parsed = self.parse_status_report(response)
+                    return True, parsed
+
+            raise TimeoutError("Timeout consultando estado GRBL")
+
         except serial.SerialException as error:
             raise ConnectionError(
                 f"Error de comunicación serie: {error}"
             ) from error
+        
+    def parse_status_report(self, status_report: str) -> dict:
+        parsed = {
+            "raw": status_report,
+        }
+
+        content = status_report[1:-1]
+        fields = content.split("|")
+
+        machine_state = fields[0]
+        parsed["status"] = machine_state
+        parsed["base_status"] = machine_state.split(":", 1)[0]
+
+        for field in fields[1:]:
+            if ":" not in field:
+                continue
+
+            key, value = field.split(":", 1)
+
+            if key in ["MPos", "WPos", "WCO"]:
+                parsed[key] = [
+                    float(number)
+                    for number in value.split(",")
+                ]
+
+            elif key == "Bf":
+                parsed[key] = [
+                    int(number)
+                    for number in value.split(",")
+                ]
+
+            elif key == "FS":
+                parsed[key] = [
+                    float(number)
+                    for number in value.split(",")
+                ]
+
+            elif key == "Pn":
+                parsed[key] = value
+
+            else:
+                parsed[key] = value
+
+        return parsed
         
     def wait_until_idle(
         self,
@@ -141,13 +228,13 @@ if __name__ == "__main__":
     SerialClient.connect()
     responses = SerialClient.send_line_command(command='$H')
     print(responses)
-    #response = SerialClient.query_status()
+    response = SerialClient.query_status()
     #print(response)
-    SerialClient.send_line_command("G21")
-    SerialClient.send_line_command("G90")
-    SerialClient.send_line_command(
-        "G1 X15 Y10 Z12 B12 F400"
-    )
-    response = SerialClient.wait_until_idle(timeout=200.0)
-    print(response)
+    # SerialClient.send_line_command("G21")
+    # SerialClient.send_line_command("G90")
+    # SerialClient.send_line_command(
+    #     "G1 X15 Y10 Z12 B12 F400"
+    # )
+    # response = SerialClient.wait_until_idle(timeout=200.0)
+    # print(response)
     SerialClient.disconnect()
