@@ -1,0 +1,15 @@
+float64 base
+float64 shoulder
+float64 elbow
+float64 wrist
+float64 feed_rate
+---
+bool success
+string message
+---
+string stage
+string grbl_status
+float64 base
+float64 shoulder
+float64 elbow
+float64 wrist
