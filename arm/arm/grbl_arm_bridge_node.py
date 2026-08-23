@@ -1,9 +1,10 @@
 import rclpy
 from rclpy.node import Node 
 from arm.utils.grbl_serial_client import GrblSerialClient
+from arm.utils.arm_kinematics import inverse_kinematics, model_joints_to_grbl_targets, build_g1_command, forward_kinematics, grbl_targets_to_model_joints
 from interfaces.srv import Trigger, Change
 from rclpy.action import ActionServer
-from interfaces.action import Home, MoveJoints
+from interfaces.action import Home, MoveJoints, MoveJointsCart
 import time
 
 class ArmNode(Node):
@@ -56,10 +57,18 @@ class ArmNode(Node):
         )
 
         self.move_joints_server = ActionServer(
+            self,
             action_name="arm/move_joints",
             action_type=MoveJoints,
             execute_callback=self.execute_move_joints_callback
             )
+
+        self.move_joints_cart = ActionServer(
+            self,
+            action_name="arm/move_joints_cart",
+            action_type=MoveJointsCart,
+            execute_callback=self.execute_move_joints_cart_callback
+        )
 
     def callback_connect(self, request: Trigger.Request, response: Trigger.Response) -> Trigger.Response:
         try:
@@ -82,7 +91,8 @@ class ArmNode(Node):
         
     def callback_status(self, request: Trigger.Request, response: Trigger.Response) -> Trigger.Response:
         try:
-            response.success, response.message = self.SerialClient.query_status()
+            response.success, message = self.SerialClient.query_status()
+            response.message = message.get('raw')
             return response
         except (TimeoutError, ConnectionError) as error:
             response.success = False
@@ -133,6 +143,7 @@ class ArmNode(Node):
             goal_handle.publish_feedback(feedback)
 
             goal_handle.succeed()
+            self.get_logger().info('Homming realizado')
             result.success = True
             result.message = "Homing completed"
 
@@ -147,76 +158,101 @@ class ArmNode(Node):
         return result
     
     def execute_move_joints_callback(self, goal_handle) -> MoveJoints.Result:
-        base = goal_handle.request.base
-        shoulder = goal_handle.request.shoulder
-        elbow = goal_handle.request.elbow
-        wrist = goal_handle.request.wrist
-        feed_rate = goal_handle.request.feed_rate
+        WORK_LIMITS = {
+            "shoulder": (0.0, 68.0),
+            "elbow": (0.0, 128.0),
+            "base": (0.0, 228.0),
+            "wrist": (0.0, 157.0),
+        }
+
         result = MoveJoints.Result()
         feedback = MoveJoints.Feedback()
 
+        goal = goal_handle.request
+
+        ang_artic = {
+            'base': goal.base,
+            'shoulder': goal.shoulder,
+            'elbow': goal.elbow,
+            'wrist': goal.wrist,
+            'feed_rate': goal.feed_rate,
+        }
+
+        for item, value in WORK_LIMITS.items():
+            if not value[0] <= ang_artic[item] <= value[1]:
+                feedback.stage = f"Articulación '{item}' ({ang_artic[item]}) fuera de rango {value}"
+                goal_handle.publish_feedback(feedback)
+                goal_handle.abort()
+                result.success = False
+                result.message = f"Articulación '{item}' ({ang_artic[item]}) fuera de rango {value}"
+                return result
+
         try:
-            feedback.stage = "Empezando el movimient..."
-            goal_handle.publish_feedback(feedback)
-            self.SerialClient.send_line_command('G21')
-            self.SerialClient.send_line_command('G90')
-            status, response = self.SerialClient.query_status()
-            if not status:
-                goal_handle.abort()
-                result.success = False
-                result.message = f'Posicion no completada error: {response}'
-
-            feedback.grbl_status = response.get('status')
+            feedback.stage = "starting_move"
+            feedback.grbl_status = ""
             goal_handle.publish_feedback(feedback)
 
-            self.SerialClient.send_line_command(f'G1 X{shoulder} Y{elbow} Z{base} B{wrist} F{feed_rate}')
-            feedback.stage = 'Comando de posicion mandado'
-            goal_handle.publish_feedback(feedback)
+            self.SerialClient.send_line_command("G21")
+            self.SerialClient.send_line_command("G90")
 
-            status, response = self.SerialClient.query_status()
-            if not status:
-                goal_handle.abort()
-                result.success = False
-                result.message = f'Posicion no completada error: {response}'
+            command = (
+                f"G1 "
+                f"X{ang_artic['shoulder']:.3f} "
+                f"Y{ang_artic['elbow']:.3f} "
+                f"Z{ang_artic['base']:.3f} "
+                f"B{ang_artic['wrist']:.3f} "
+                f"F{ang_artic['feed_rate']:.3f}"
+            )
 
-            last_time = time.monotonic()
-            while not response.get("status") == "Idle":
-                if time.monotonic() > (last_time + 0.5):
-                    last_time = time.monotonic()
-                    if not status:
-                        goal_handle.abort()
-                        result.success = False
-                        result.message = f'Posicion no completada error: {response}'
-                    feedback.stage = "En movimiento"
-                    feedback.grbl_status = response("status")
-                    for i in ["MPos", "WPos", "WCO"]:
-                        pos = response.get(i)
-                        if i != None:     
-                            feedback.base = response.get(pos)[2]
-                            feedback.shoulder = response.get(pos)[0]
-                            feedback.elbow = response.get(pos)[1]
-                            feedback.wrist = response.get(pos)[4]
-                    goal_handle.publish_feedback(feedback)
-                    status, response = self.SerialClient.query_status()
+            self.get_logger().info(f"Sending command: {command}")
 
-            if not status:
-                goal_handle.abort()
-                result.success = False
-                result.message = f'Posicion no completada error: {response}'
-            feedback.stage = "Posicon completada"
-            feedback.grbl_status = response.get("status")
-            for i in ["MPos", "WPos", "WCO"]:
-                pos = response.get(i)
-                if pos != None:     
-                    feedback.base = response.get(pos)[2]
-                    feedback.shoulder = response.get(pos)[0]
-                    feedback.elbow = response.get(pos)[1]
-                    feedback.wrist = response.get(pos)[4]
-            goal_handle.publish_feedback(feedback)
+            self.SerialClient.send_line_command(command)
 
-            goal_handle.succed()
-            result.success = True
-            result.message = "El brazo a completado su movimiento"
+            deadline = time.monotonic() + 500.0
+
+            while time.monotonic() < deadline:
+                success, status_dict = self.SerialClient.query_status()
+
+                if not success:
+                    goal_handle.abort()
+                    result.success = False
+                    result.message = f"Error querying status: {status_dict}"
+                    return result
+
+                base_state = status_dict.get("base_status", "Unknown")
+                raw_status = status_dict.get("raw", str(status_dict))
+
+                feedback.stage = base_state
+                feedback.grbl_status = raw_status
+
+                mpos = status_dict.get("MPos")
+
+                if mpos is not None and len(mpos) >= 5:
+                    feedback.shoulder = mpos[0]
+                    feedback.elbow = mpos[1]
+                    feedback.base = mpos[2]
+                    feedback.wrist = mpos[4]
+
+                goal_handle.publish_feedback(feedback)
+
+                if base_state == "Idle":
+                    goal_handle.succeed()
+                    result.success = True
+                    result.message = "El brazo ha completado su movimiento"
+                    return result
+
+                if base_state in ["Alarm", "Hold", "Door", "Sleep"]:
+                    goal_handle.abort()
+                    result.success = False
+                    result.message = f"Movimiento abortado. Estado GRBL: {raw_status}"
+                    return result
+
+                time.sleep(0.2)
+
+            goal_handle.abort()
+            result.success = False
+            result.message = "Timeout esperando a que el brazo llegue a Idle"
+            return result
 
         except (RuntimeError, TimeoutError, ConnectionError) as error:
             feedback.stage = "error"
@@ -224,9 +260,82 @@ class ArmNode(Node):
 
             goal_handle.abort()
             result.success = False
-            result.message = f"Movimiento failed: {error}"
+            result.message = f"Movimiento fallido: {error}"
+            return result
 
-        return result
+    def execute_move_joints_cart_callback(self, goal_handle) -> MoveJointsCart.Result:
+        '''
+        Este metodo es la llamada de una accion:
+            -Goal es la posicion cartesiana indicada la cual llegamos x,y,z(float) y la velocidad
+            de movimiento feed_rate(float) 
+            -Result nos indicara si se ha completo success(bool) y un mensage message(string)
+            -Feedback nos manda la posición actual x,y,z(float) y su estado grbl_status(string)
+        '''
+        result = MoveJointsCart.Result()
+        feedback = MoveJointsCart.Feedback()
+
+        goal = goal_handle.request
+        x_c, y_c, z_c, feed_rate = goal.x, goal.y, goal.z, goal.feed_rate
+
+        joints = inverse_kinematics(x=x_c, y=y_c, z=z_c) #Cinematica inversa de cordenadas cartesianas respecto a la base convertimos a angulos para las articualciones
+        grbl_targets = model_joints_to_grbl_targets(joints=joints) #Angulos o pasos para los argunos que entienda nuestro robot
+        command = build_g1_command(grbl_targets=grbl_targets, feed_rate=feed_rate) #Comandos g1 que pueda enterder la placa
+
+        self.get_logger().info(f"Sending command: {command}")
+        self.SerialClient.send_line_command(command)
+
+        deadline = time.monotonic() + 500.0
+
+        while time.monotonic() < deadline:
+            success, status_dict = self.SerialClient.query_status()
+           
+            if not success:
+                goal_handle.abort()
+                result.success = False
+                result.message = f"Error querying status: {status_dict}"
+                return result
+
+            base_state = status_dict.get("base_status", "Unknown")
+            raw_status = status_dict.get("raw", str(status_dict))
+
+            feedback.stage = base_state
+            feedback.grbl_status = raw_status
+
+            mpos = status_dict.get("MPos")
+            wco = status_dict.get("WCO")
+
+            if (mpos is not None and wco is not None and len(mpos) >= 5 and len(wco) >= 5):
+                joints_grbl = {
+                    "shoulder": mpos[0] - wco[0],
+                    "elbow": mpos[1] - wco[1],
+                    "base": mpos[2] - wco[2],
+                    "wrist": mpos[4] - wco[4],
+                }
+                
+                #self.get_logger().info(f'joints_grbl: {joints_grbl.items()}')
+                model_joints = grbl_targets_to_model_joints(joints=joints_grbl) #A los angulos que nos llegan del arm tenemos que meter una correcion para ser grados reales de las articulaciones
+                #self.get_logger().info(f"model_joints: {model_joints['shoulder']}, {model_joints['elbow']}, {model_joints['base']}, {model_joints['wrist']}")
+                dict_feedback = forward_kinematics(ang_shoulder=model_joints['shoulder'], ang_elbow=model_joints['elbow'], ang_base=model_joints['base'], ang_wrist=model_joints['wrist']) #Cinematica directa, convierte de angulos del robot a posicion cartesiana
+                #self.get_logger().info(f"dict_feedback: {dict_feedback['x']}, {dict_feedback['y']}, {dict_feedback['z']}")
+                feedback.x = round(dict_feedback['x'], 2)
+                feedback.y = round(dict_feedback['y'], 2)
+                feedback.z = round(dict_feedback['z'], 2)
+
+                goal_handle.publish_feedback(feedback)
+
+            if base_state == "Idle":
+                goal_handle.succeed()
+                result.success = True
+                result.message = "El brazo ha completado su movimiento"
+                return result
+
+            if base_state in ["Alarm", "Hold", "Door", "Sleep"]:
+                goal_handle.abort()
+                result.success = False
+                result.message = f"Movimiento abortado. Estado GRBL: {raw_status}"
+                return result
+
+            time.sleep(0.2)
 
     def close(self) -> None:
         try:

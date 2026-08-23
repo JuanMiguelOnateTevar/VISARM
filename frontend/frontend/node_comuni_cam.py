@@ -49,6 +49,9 @@ class CameraClientNode(Node):
                     response = complete_request.result()
                     success = response.success
                     message = response.message
+                    x = response.x
+                    y = response.y
+                    
                     timestamp_ms = ((response.header_capture.stamp.sec*1000) + response.header_capture.stamp.nanosec) /1000000
                     img = self.bridge.imgmsg_to_cv2(response.image, desired_encoding='bgr8')
 
@@ -57,7 +60,9 @@ class CameraClientNode(Node):
                             success,
                             message,
                             timestamp_ms,
-                            img
+                            img,
+                            x,
+                            y
                         )
 
                     self.get_logger().info('Imagen captura y procesado.')

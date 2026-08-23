@@ -4,3 +4,5 @@ bool success
 string message
 std_msgs/Header header_capture
 sensor_msgs/Image image
+float32 x
+float32 y

@@ -201,8 +201,7 @@ class GrblSerialClient:
         while time.monotonic() < deadline:
             _, response = self.query_status()
 
-            state = response[1:-1].split("|", 1)[0]
-            base_state = state.split(":", 1)[0]
+            base_state = response.get('base_status') 
 
             if base_state == "Idle":
                 return response
@@ -228,13 +227,16 @@ if __name__ == "__main__":
     SerialClient.connect()
     responses = SerialClient.send_line_command(command='$H')
     print(responses)
-    response = SerialClient.query_status()
-    #print(response)
-    # SerialClient.send_line_command("G21")
-    # SerialClient.send_line_command("G90")
+    _, response = SerialClient.query_status()
+    print(response, response.get('base_status'))
+    SerialClient.send_line_command("G21")
+    SerialClient.send_line_command("G91")
     # SerialClient.send_line_command(
-    #     "G1 X15 Y10 Z12 B12 F400"
+    #      "G1 X12 F100"
     # )
-    # response = SerialClient.wait_until_idle(timeout=200.0)
-    # print(response)
+    SerialClient.send_line_command(
+         "G1 X7.0 Y128.0 Z43.0 B157.0 F100"
+    )
+    response = SerialClient.wait_until_idle(timeout=200.0)
+    print(response)
     SerialClient.disconnect()
