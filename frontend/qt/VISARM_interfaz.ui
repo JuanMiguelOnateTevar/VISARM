@@ -1148,7 +1148,7 @@ QProgressBar::chunk
             <item>
              <widget class="QLabel" name="Image">
               <property name="text">
-               <string>TextLabel</string>
+               <string>Esperando imagen...</string>
               </property>
               <property name="scaledContents">
                <bool>false</bool>
@@ -1514,7 +1514,7 @@ QProgressBar::chunk
              </property>
              <layout class="QHBoxLayout" name="horizontalLayout_4">
               <item>
-               <widget class="QCheckBox" name="checkBox">
+               <widget class="QCheckBox" name="checkBox_Save">
                 <property name="text">
                  <string>Guardar:</string>
                 </property>
@@ -1527,7 +1527,7 @@ QProgressBar::chunk
                <widget class="QLineEdit" name="lineEdit_Path"/>
               </item>
               <item>
-               <widget class="QToolButton" name="toolButton_">
+               <widget class="QToolButton" name="toolButton_Path_Select">
                 <property name="text">
                  <string>...</string>
                 </property>

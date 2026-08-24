@@ -3,7 +3,7 @@ from threading import Thread
 import numpy as np
 import cv2
 
-from PyQt5.QtWidgets import QApplication, QMainWindow
+from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtCore import Qt
@@ -11,6 +11,10 @@ from PyQt5.QtGui import QImage, QPixmap
 from PyQt5.QtCore import QTimer
 from frontend.ui.visarm_interfaz import Ui_MainWindow
 import frontend.ui.resource
+
+from pathlib import Path
+import os
+import datetime
 
 import rclpy
 from rclpy.executors import MultiThreadedExecutor
@@ -69,9 +73,9 @@ class VisarmWindow(QMainWindow):
     )
 
     z_precinta = 120.0
-    feed_rate_med =100.0
-    feed_rate_slow =50.0
-    feed_rate_fast =150.0
+    feed_rate_med =150.0
+    feed_rate_slow =100.0
+    feed_rate_fast =200.0
 
     def __init__(self) -> None:
         super().__init__()
@@ -141,8 +145,13 @@ class VisarmWindow(QMainWindow):
         self.ui.pushButtonOK.setEnabled(False)
         self.ui.pushButtonNOK.setEnabled(False)
         self.ui.pushButtonStatus.setEnabled(False)
+        #Desabilitamos linea del path y linea info para que no puedas escribir directamente
+        self.ui.lineEdit_Path.setEnabled(False)
+        self.ui.lineEdit_Info.setEnabled(False)
+        self.ui.checkBox_Save.setEnabled(False)
 
     def connect_signals(self) -> None:
+        self.ui.toolButton_Path_Select.clicked.connect(self.select_path)
         self.ui.ButtonLuminaria1.toggled.connect(self.change_light_1)
         self.ui.ButtonLuminaria2.toggled.connect(self.change_light_2)
         self.ui.ButtonMarcha_Paro.toggled.connect(self.start_stop_conveyor)
@@ -197,6 +206,20 @@ class VisarmWindow(QMainWindow):
             self.ui.ButtonMarcha_Paro.setChecked(False)
 
             self.ui.lineEdit_Info.setText("VISARM parado")
+
+    #Creación de las carpetas de imagenes con defectos NOK y sin defectos OK
+    def select_path(self):
+        path = QFileDialog.getExistingDirectory(self, "Seleccionar carpeta")
+
+        if path:
+            self.ui.lineEdit_Path.setText(path)
+            self.path_base = Path(path)
+            self.folder_ok = self.path_base / "OK"
+            self.folder_nok = self.path_base / "NOK"
+            self.folder_ok.mkdir(exist_ok=True)
+            self.folder_nok.mkdir(exist_ok=True)
+            self.ui.lineEdit_Info.setText("Path creado")
+            self.ui.checkBox_Save.setEnabled(True)
 
     ###ESP32###
     #FOTOCELULA#
@@ -358,6 +381,10 @@ class VisarmWindow(QMainWindow):
             # Fuerza el repintado visual
             self.ui.Image.update()
 
+            #Save en el path la imagen formato numpy si tenemo el Checked selecionado
+            if self.ui.checkBox_Save.isChecked():
+                self.save_img(message=message, image=image)
+
             print(
                 f"Imagen mostrada: {width}x{height} → "
                 f"{scaled_pixmap.width()}x{scaled_pixmap.height()}, "
@@ -370,6 +397,17 @@ class VisarmWindow(QMainWindow):
             self.ui.lineEdit_Info.setText(
                 f"Error mostrando imagen: {error}"
             )
+    #Pone nombre a nuestra imagen y lo guarda en funcion de si es OK o NOK en diferentes carpetas.
+    def save_img(self, message:str, image: np.array) -> None:
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        filename = f"{timestamp}.npy"
+        if message == 'OK':
+            save_path = self.folder_ok / filename
+        elif message == 'NOK':
+            save_path = self.folder_nok / filename
+        else:
+            save_path = self.path_base / filename
+        np.save(save_path, image)
 
     ###ARM###
     #ARM_CONNECT#
