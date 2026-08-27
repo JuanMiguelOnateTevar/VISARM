@@ -102,7 +102,7 @@ class ArmNode(Node):
     def callback_gripper(self, request: Change.Request, response: Change.Response) -> Change.Response:
         try:
             status = request.mode 
-            mode = 'abierto' if status else('cerrado' if not status else 'desconocido')
+            mode = 'cerrado' if status else('abierto' if not status else 'desconocido')
             timeout = self.gripper_timeout
             if status:
                 responses=self.SerialClient.send_line_command("M64 P2", timeout)

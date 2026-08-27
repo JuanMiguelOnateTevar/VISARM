@@ -9,7 +9,7 @@ from glob import glob
 import time
 #import logging
 from interfaces.srv import TrackedImage
-from camera_processing.utils.processing_img import proccesing_img_simu
+from camera_processing.utils.processing_img import processing_img
 
 class CameraNode(Node):
     def __init__(self) -> None:
@@ -125,18 +125,17 @@ class CameraNode(Node):
             frame_processing, message, pose = self.processing_image(
                 frame_raw=frame
             )
-
             image_msg = self.bridge.cv2_to_imgmsg(
                 frame_processing,
                 encoding="bgr8",
             )
-
+            
             capture_time = self.get_clock().now().to_msg()
 
             image_msg.header.stamp = capture_time
             image_msg.header.frame_id = "camera"
 
-            self.get_logger().info(f"Posicion del objeto {pose['x']}, {pose['y']}.")
+            self.get_logger().info(f"Posicion del objeto {pose['x']:.2f}, {pose['y']:.2f}.")
 
             response.success = True
             response.message = message
@@ -165,7 +164,7 @@ class CameraNode(Node):
         return response
 
     def processing_image(self, frame_raw):
-        frame_raw_proc, message, pose = proccesing_img_simu(frame_raw=frame_raw)
+        frame_raw_proc, message, pose = processing_img(frame_raw=frame_raw)
 
         return frame_raw_proc, message, pose
         

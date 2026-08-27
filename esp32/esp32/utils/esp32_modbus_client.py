@@ -89,7 +89,7 @@ class Maquina:
         self._foto_thread:    Optional[threading.Thread] = None
         self._foto_stop_evt:  threading.Event = threading.Event()
         self._foto_callback:  Optional[Callable[[bool], None]] = None
-        self._foto_intervalo: float = 0.1   # segundos
+        self._foto_intervalo: float = 0.01   # segundos
 
         if not self._client.connect():
             raise ConnectionError(f"No se pudo conectar al ESP32 en {ip}:{port}")
@@ -354,7 +354,7 @@ class Maquina:
     def iniciar_monitor_fotocelula(
         self,
         callback: Callable[[bool], None],
-        intervalo_ms: int = 100,
+        intervalo_ms: int = 20,
     ):
         """
         Lanza un hilo que lee la fotocélula cada `intervalo_ms` ms

@@ -1367,10 +1367,10 @@ QProgressBar::chunk
               <string>Arm</string>
              </property>
              <layout class="QGridLayout" name="gridLayout_7">
-              <item row="1" column="0">
-               <widget class="QPushButton" name="pushButtonPrePicking">
+              <item row="1" column="1">
+               <widget class="QPushButton" name="pushButtonNOK">
                 <property name="text">
-                 <string>Pre-Picking</string>
+                 <string>NOK</string>
                 </property>
                </widget>
               </item>
@@ -1378,13 +1378,6 @@ QProgressBar::chunk
                <widget class="QPushButton" name="pushButtonHome">
                 <property name="text">
                  <string>Home</string>
-                </property>
-               </widget>
-              </item>
-              <item row="1" column="1">
-               <widget class="QPushButton" name="pushButtonNOK">
-                <property name="text">
-                 <string>NOK</string>
                 </property>
                </widget>
               </item>
@@ -1438,12 +1431,72 @@ QProgressBar::chunk
                 </item>
                </layout>
               </item>
+              <item row="1" column="0">
+               <widget class="QPushButton" name="pushButtonPrePicking">
+                <property name="text">
+                 <string>Pre-Picking</string>
+                </property>
+               </widget>
+              </item>
               <item row="0" column="1">
                <widget class="QPushButton" name="pushButtonOK">
                 <property name="text">
                  <string>OK</string>
                 </property>
                </widget>
+              </item>
+              <item row="4" column="0" colspan="2">
+               <layout class="QGridLayout" name="gridLayout_5">
+                <item row="1" column="1">
+                 <widget class="QPushButton" name="pushButtonGripper">
+                  <property name="text">
+                   <string>Gripper</string>
+                  </property>
+                  <property name="checkable">
+                   <bool>true</bool>
+                  </property>
+                 </widget>
+                </item>
+                <item row="1" column="0">
+                 <spacer name="horizontalSpacer_12">
+                  <property name="orientation">
+                   <enum>Qt::Horizontal</enum>
+                  </property>
+                  <property name="sizeHint" stdset="0">
+                   <size>
+                    <width>40</width>
+                    <height>20</height>
+                   </size>
+                  </property>
+                 </spacer>
+                </item>
+                <item row="0" column="1">
+                 <spacer name="horizontalSpacer_11">
+                  <property name="orientation">
+                   <enum>Qt::Horizontal</enum>
+                  </property>
+                  <property name="sizeHint" stdset="0">
+                   <size>
+                    <width>40</width>
+                    <height>20</height>
+                   </size>
+                  </property>
+                 </spacer>
+                </item>
+                <item row="1" column="2">
+                 <spacer name="horizontalSpacer_13">
+                  <property name="orientation">
+                   <enum>Qt::Horizontal</enum>
+                  </property>
+                  <property name="sizeHint" stdset="0">
+                   <size>
+                    <width>40</width>
+                    <height>20</height>
+                   </size>
+                  </property>
+                 </spacer>
+                </item>
+               </layout>
               </item>
              </layout>
             </widget>

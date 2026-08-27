@@ -42,6 +42,11 @@ class ArmClientNode(Node):
             action_type=MoveJointsCart
         )
 
+        self.client_gripper = self.create_client(
+            srv_name='/arm/gripper',
+            srv_type=Change
+        )
+
     def callback_client_connect(self) -> None:
 
         request = Trigger.Request()
@@ -292,3 +297,46 @@ class ArmClientNode(Node):
             action_name,
             None
         )
+
+    def callback_client_gripper(self, mode: bool, timeout: float) -> None:
+
+        request = Change.Request()
+        request.mode = mode
+        request.timeout = timeout
+
+        if not self.client_gripper.service_is_ready():
+            if self.arm_grip_response_handler is not None:
+                self.arm_grip_response_handler(
+                    False,
+                    "El servicio del robot no está disponible.",
+                )
+            return
+
+        try:
+            future = self.client_gripper.call_async(request)
+
+            def when_finished(completed_future) -> None:
+                try:
+                    response = completed_future.result()
+
+                    status = response.status
+                    message = response.message
+
+                except Exception as error:
+                    status = False
+                    message = str(error)
+
+                if self.arm_grip_response_handler is not None:
+                    self.arm_grip_response_handler(
+                        status,
+                        message,
+                    )
+            #Cuando future tenga una respuesta ejecuta when_finished, qued aregistrado pero no se ejecuta hasta q no llega respest, no se queda esperando
+            future.add_done_callback(when_finished)
+
+        except Exception as error:
+            if self.arm_grip_response_handler is not None:
+                self.arm_grip_response_handler(
+                    False,
+                    str(error),
+                )

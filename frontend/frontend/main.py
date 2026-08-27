@@ -71,11 +71,23 @@ class VisarmWindow(QMainWindow):
         bool, #success
         str,  #message
     )
+    #ARM_GRIPPER#
+    arm_gripper_response_signal = pyqtSignal(
+        bool, #status
+        str, #message
+    )
 
     z_precinta = 120.0
+    z_cinta = 28.0
+    pose_ok = {'x':-35.0, 'y':240.0, 'z':z_precinta}
+    pose_nok = {'x':80.0, 'y':240.0, 'z':z_precinta}
+    pose_prepicking = {'x': 160.0, 'y':175.0, 'z':z_precinta}
     feed_rate_med =150.0
     feed_rate_slow =100.0
     feed_rate_fast =200.0
+    busy_arm = False
+    secuencia = 0
+    result_oknok = ''
 
     def __init__(self) -> None:
         super().__init__()
@@ -124,6 +136,9 @@ class VisarmWindow(QMainWindow):
         #ARM_HOMEandJOINTS#
         self.arm_home_joints_response_signal.connect(self.update_arm_action_result)
         self.ArmClient.arm_action_result_handler = (self.arm_home_joints_response_signal.emit)
+        #ARM_GRIPPER#
+        self.arm_gripper_response_signal.connect(self.update_arm_grippper_response)
+        self.ArmClient.arm_grip_response_handler = (self.arm_gripper_response_signal.emit)
 
         self.connect_signals()
 
@@ -145,6 +160,7 @@ class VisarmWindow(QMainWindow):
         self.ui.pushButtonOK.setEnabled(False)
         self.ui.pushButtonNOK.setEnabled(False)
         self.ui.pushButtonStatus.setEnabled(False)
+        self.ui.pushButtonGripper.setEnabled(False)
         #Desabilitamos linea del path y linea info para que no puedas escribir directamente
         self.ui.lineEdit_Path.setEnabled(False)
         self.ui.lineEdit_Info.setEnabled(False)
@@ -159,6 +175,10 @@ class VisarmWindow(QMainWindow):
         self.ui.speedSliderConveyor.valueChanged.connect(self.speed_conveyor)
         self.ui.pushButtonStatus.clicked.connect(self.arm_status)
         self.ui.pushButtonHome.clicked.connect(self.arm_home)
+        self.ui.pushButtonPrePicking.clicked.connect(self.arm_prepicking)
+        self.ui.pushButtonOK.clicked.connect(self.arm_ok)
+        self.ui.pushButtonNOK.clicked.connect(self.arm_nok)
+        self.ui.pushButtonGripper.toggled.connect(self.arm_gripper)
 
     def start_system(self, checked) -> None:
         if checked:
@@ -173,6 +193,7 @@ class VisarmWindow(QMainWindow):
             self.ui.pushButtonOK.setEnabled(True)
             self.ui.pushButtonNOK.setEnabled(True)
             self.ui.pushButtonStatus.setEnabled(True)
+            self.ui.pushButtonGripper.setEnabled(True)
 
             # Conectar arm y poner home arm, encendemos la luminaria1, luminaria2 y cinta.
             self.arm_connect()
@@ -180,7 +201,7 @@ class VisarmWindow(QMainWindow):
             self.ui.ButtonLuminaria2.setChecked(True)
             self.ui.speedSliderConveyor.setValue(120)
             self.ui.ButtonSentido.setChecked(True)
-            self.ui.ButtonMarcha_Paro.setChecked(True)
+            #self.ui.ButtonMarcha_Paro.setChecked(True)
             
             self.ui.lineEdit_Info.setText("VISARM iniciado")
 
@@ -196,6 +217,7 @@ class VisarmWindow(QMainWindow):
             self.ui.pushButtonOK.setEnabled(False)
             self.ui.pushButtonNOK.setEnabled(False)
             self.ui.pushButtonStatus.setEnabled(False)
+            self.ui.pushButtonGripper.setEnabled(False)
 
             # Desconectamos Arm, apagamos luminaria1, luminaria2 y cinta
             self.arm_disconnect()
@@ -235,10 +257,13 @@ class VisarmWindow(QMainWindow):
         self.ui.ButtonMarcha_Paro.setChecked(False)
 
         #Este delay es no bloqueante
-        QTimer.singleShot(
-            1000,
-            self.CamClient.callback_client_camera,
-        )
+        if self.secuencia in (0, 3, 4) and not self.busy_arm:
+            QTimer.singleShot(
+                1000, #SE puede ajustar este tiempo para que haga la foto antes o despues
+                self.CamClient.callback_client_camera,
+            )
+        else:
+            self.ui.lineEdit_Info.setText('Error. Posición incorrecta pulsa boton de Pre-Picking.')
     #LUMINARIAS#
     #Funciones luces puente entre hilo Qt -> hilo Ros
     def change_light_1(self, checked: bool) -> None:
@@ -311,7 +336,7 @@ class VisarmWindow(QMainWindow):
                                                         direction=self.status_direction_conveyor,
                                                         speed=self.status_speed_conveyor)
      
-        self.ui.lineEdit_Info.setText('Velocidad del conveyor modificada.')
+        self.ui.lineEdit_Info.setText(f'Velocidad del conveyor modificada. Velocidad {round(value/2.55)}%.')
     #Funcion cinta ejectuada en hilo Qt, despues de recibir la respuesta de Ros
     def update_conveyor_response(self, start_stop, direction, speed, status) -> None:
         status_start_stop = 'en marcha' if start_stop else 'parado' if not start_stop else 'ERROR'
@@ -339,7 +364,16 @@ class VisarmWindow(QMainWindow):
 
         try:
             #Mandamos orden de posicion de picking al Arm
-            self.arm_joint_picking(x=x, y=y, z=self.z_precinta, feed_rate=self.feed_rate_med)
+            #El x e y que recivimos es respecto a la esquina de arriba izquierda, 
+            # de cuando calibramos con la fucion perpestive_calibration.py
+            #por eso lo tenemos que corregir.
+            x_cor= x + self.pose_prepicking['x'] +8.0 #AVISO este valor es muy especifico
+            y_cor= 74 - y + self.pose_prepicking['y'] #74mm es el lado con el que se calibro la perpectiva 
+            self.ui.lineEdit_Info.setText(f'Pose picking ({x_cor:.2f}, {y_cor:.2f}, {self.z_cinta:.2f}).')
+
+            self.arm_picking(x=x_cor, y=y_cor, z=self.z_cinta, feed_rate=self.feed_rate_med)
+            self.result_oknok = message
+
             # OpenCV entrega BGR y QImage necesita RGB
             image_rgb = cv2.cvtColor(
                 image,
@@ -437,6 +471,48 @@ class VisarmWindow(QMainWindow):
     #ARM_HOME#
     def arm_home(self) -> None:
         self.ArmClient.goal_home(start=True)
+    #ARM_PREPICKING#
+    def arm_prepicking(self) -> None:
+        if self.secuencia == 2:
+            self.busy_arm = True #Con True esta ocupado
+        elif self.secuencia == 4:
+            self.busy_arm = False
+            self.ui.ButtonMarcha_Paro.setChecked(True)
+        else:
+            self.busy_arm = False #Con False NO esta ocupado
+            self.secuencia = 0
+        self.arm_joint_prepicking(x=self.pose_prepicking['x'], y=self.pose_prepicking['y'], z=self.pose_prepicking['z'], feed_rate=self.feed_rate_fast)
+
+    #ARM_OK#
+    def arm_ok(self) -> None:
+        if not self.busy_arm:
+            self.arm_joint_ok(x=self.pose_ok['x'], y=self.pose_ok['y'] , z=self.pose_ok['z'], feed_rate=self.feed_rate_fast)
+        if self.secuencia == 2:
+            self.arm_joint_ok(x=self.pose_ok['x'], y=self.pose_ok['y'] , z=self.pose_ok['z'], feed_rate=self.feed_rate_fast)
+            self.secuencia = 3
+        self.busy_arm = True
+
+    #ARM_NOK#
+    def arm_nok(self) -> None:
+        if not self.busy_arm:
+            self.arm_joint_nok(x=self.pose_nok['x'], y=self.pose_nok['y'] , z=self.pose_nok['z'], feed_rate=self.feed_rate_fast)
+        if self.secuencia == 2:
+            self.arm_joint_nok(x=self.pose_nok['x'], y=self.pose_nok['y'] , z=self.pose_nok['z'], feed_rate=self.feed_rate_fast)
+            self.secuencia = 3
+        self.busy_arm = True
+            
+    #ARM_PICKING#
+    def arm_picking(self, x:float, y:float, z:float, feed_rate:float) -> None:
+        self.ui.pushButtonHome.setEnabled(False)
+        self.ui.pushButtonPrePicking.setEnabled(False)
+        self.ui.pushButtonOK.setEnabled(False)
+        self.ui.pushButtonNOK.setEnabled(False)
+        self.ui.pushButtonStatus.setEnabled(False)
+        self.ui.pushButtonGripper.setEnabled(False)
+        self.secuencia = 1
+        if not self.busy_arm:
+            self.arm_joint_picking(x=x, y=y, z=z, feed_rate=feed_rate)
+
     #En estos metodos englobamos todos los que envian posiciones que nos es home al robot
     def arm_joint_prepicking(self, x:float, y:float, z:float, feed_rate: float) -> None:
         self.ArmClient.goal_joint_xyz(x=x, y=y, z=z, feed_rate=feed_rate)
@@ -446,6 +522,7 @@ class VisarmWindow(QMainWindow):
         self.ArmClient.goal_joint_xyz(x=x, y=y, z=z, feed_rate=feed_rate)
     def arm_joint_nok(self, x:float, y:float, z:float, feed_rate: float) -> None:
         self.ArmClient.goal_joint_xyz(x=x, y=y, z=z, feed_rate=feed_rate)
+
     #Función para action en hilo Qt, es comun para todas las acciones de ARM
     def update_arm_action_result(self, action_name:str, success: bool, message: str) -> None:
         if action_name == 'home':
@@ -454,7 +531,54 @@ class VisarmWindow(QMainWindow):
             else:
                 self.ui.lineEdit_Info.setText(f'Home NO realizado. {message}')
         elif action_name == 'move_xyz':
-            pass
+            if success:
+                self.ui.lineEdit_Info.setText(f'Joint realizado. {message}')
+                #Pongo el tema de la secuencia para asegura que se realiza secuencialmente la 
+                # fase de pickin y dejar en ok o no. El flujo obligatorio es: pose prepicking ->  
+                # pose picking -> cierra gripper -> pose en prepicking -> y segun ok o nok va 
+                # pose ok o pose nok -> abre gripper -> pose prepicking. En esta secuencia se 
+                # desactiva los botones de Arm.
+                if self.secuencia == 1:
+                    self.ui.pushButtonGripper.setChecked(True)
+                elif self.secuencia == 2:
+                    if self.result_oknok == 'OK':
+                        self.arm_ok()
+                    elif self.result_oknok == 'NOK':
+                        self.arm_nok()
+                elif self.secuencia == 3:
+                    self.ui.pushButtonGripper.setChecked(False)
+                elif self.secuencia == 4:
+                    self.busy_arm = False
+                    self.ui.pushButtonHome.setEnabled(True)
+                    self.ui.pushButtonPrePicking.setEnabled(True)
+                    self.ui.pushButtonOK.setEnabled(True)
+                    self.ui.pushButtonNOK.setEnabled(True)
+                    self.ui.pushButtonStatus.setEnabled(True)
+                    self.ui.pushButtonGripper.setEnabled(True)
+                    self.secuencia = 0  
+            else:
+                self.ui.lineEdit_Info.setText(f'Joint NO realizado. {message}')
+    #ARM_GRIPPER#
+    def arm_gripper(self, checked: bool) -> None:
+        if checked:
+            self.ArmClient.callback_client_gripper(mode=True, timeout=5.0)
+        else:
+            self.ArmClient.callback_client_gripper(mode=False, timeout=5.0)
+    def update_arm_grippper_response(self, status: bool,message: str) -> None:
+        if self.secuencia == 1 and status:
+            self.secuencia = 2
+            QTimer.singleShot(
+                2000,
+                self.arm_prepicking
+            )
+        elif self.secuencia == 3 and status:
+            self.secuencia = 4
+            QTimer.singleShot(
+                2000,
+                self.arm_prepicking
+            )
+
+        self.ui.lineEdit_Info.setText(message)
      
 
 

@@ -26,7 +26,7 @@ class Esp32Node(Node):
         )
         self.last_status_fotocelula = False
         self.photocell_timer = self.create_timer(
-            timer_period_sec=0.2,
+            timer_period_sec=0.02,
             callback=self.callback_fotocelula_bridge
         )
 
