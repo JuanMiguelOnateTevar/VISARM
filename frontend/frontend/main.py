@@ -79,12 +79,12 @@ class VisarmWindow(QMainWindow):
 
     z_precinta = 120.0
     z_cinta = 28.0
-    pose_ok = {'x':-35.0, 'y':240.0, 'z':z_precinta}
-    pose_nok = {'x':80.0, 'y':240.0, 'z':z_precinta}
+    pose_ok = {'x':-35.0, 'y':235.0, 'z':z_precinta}
+    pose_nok = {'x':45.0, 'y':235.0, 'z':z_precinta}
     pose_prepicking = {'x': 160.0, 'y':175.0, 'z':z_precinta}
-    feed_rate_med =150.0
-    feed_rate_slow =100.0
-    feed_rate_fast =200.0
+    feed_rate_slow =150.0
+    feed_rate_med =350.0
+    feed_rate_fast =600.0
     busy_arm = False
     secuencia = 0
     result_oknok = ''
@@ -568,13 +568,13 @@ class VisarmWindow(QMainWindow):
         if self.secuencia == 1 and status:
             self.secuencia = 2
             QTimer.singleShot(
-                2000,
+                2500,
                 self.arm_prepicking
             )
         elif self.secuencia == 3 and status:
             self.secuencia = 4
             QTimer.singleShot(
-                2000,
+                2500,
                 self.arm_prepicking
             )
 

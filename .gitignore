@@ -49,3 +49,17 @@ qtcreator-*
 
 # Catkin custom files
 CATKIN_IGNORE
+
+# Imag
+*.jpg
+*.jpeg
+*.png
+*.JPG
+*.JPEG
+*.PNG
+*.mp4
+
+# Carpeta excluida del .gitignore
+!multimedia/
+!multimedia/**
+
