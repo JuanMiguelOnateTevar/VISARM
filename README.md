@@ -8,4 +8,4 @@
 
 ## Demonstration
 
-[▶ Watch the VISARM demonstration](multimedia/detector_2_web.mp4)
+[[▶ Watch the VISARM demonstration](multimedia/detector_2_web.mp4)](https://github.com/JuanMiguelOnateTevar/VISARM/issues/1)
